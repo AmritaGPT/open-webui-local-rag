@@ -28,6 +28,7 @@ class Tools:
         :return: Base64 data URLs of the rendered pages or an error message.
         """
         search_paths = [
+            "/media/hirthikbalaji/AGPT DATA/SAMPLE",
             "/app/backend/data/uploads",
             "/mnt/uploads",
             "./backend/data/uploads",

@@ -97,6 +97,7 @@ class Tools:
 
     def _resolve_path(self, filename: str) -> str:
         search_paths = [
+            "/media/hirthikbalaji/AGPT DATA/SAMPLE",
             "/app/backend/data/uploads",
             "/mnt/uploads",
             "./backend/data/uploads",
