@@ -4,6 +4,7 @@
 **From:** Document Intelligence Development Team  
 **Date:** June 17, 2026  
 **Subject:** Delivery of Offline-Capable SharePoint Integration & Layout-Aware Document RAG Tools for Open WebUI  
+**GitHub Repository:** [AmritaGPT/open-webui-local-rag](https://github.com/AmritaGPT/open-webui-local-rag)  
 
 ---
 
@@ -49,22 +50,22 @@ graph TD
 
 ## 3. Completed Deliverables
 
-All custom code, guides, and validation assets have been successfully written to the working directory:
+All custom code, guides, and validation assets are published in the remote repository and deployed locally in the working directory:
 
 ### A. Core Tools (Open WebUI Custom Code)
-*   **SharePoint Connector (Self-Contained):** [open_webui_tools/sharepoint_connector.py](file:///home/hirthikbalaji/AGPT_FE/Brain/open_webui_tools/sharepoint_connector.py)  
+*   **SharePoint Connector (Self-Contained):** [GitHub Source](https://github.com/AmritaGPT/open-webui-local-rag/blob/main/open_webui_tools/sharepoint_connector.py) | [Local File](file:///home/hirthikbalaji/AGPT_FE/Brain/open_webui_tools/sharepoint_connector.py)  
     *Handles search, credentials/valves, user authorization verification, and encapsulates the local PDF, DOCX, and PPTX document parsing engines.*
-*   **Spreadsheet Query Tool:** [open_webui_tools/spreadsheet_query.py](file:///home/hirthikbalaji/AGPT_FE/Brain/open_webui_tools/spreadsheet_query.py)  
+*   **Spreadsheet Query Tool:** [GitHub Source](https://github.com/AmritaGPT/open-webui-local-rag/blob/main/open_webui_tools/spreadsheet_query.py) | [Local File](file:///home/hirthikbalaji/AGPT_FE/Brain/open_webui_tools/spreadsheet_query.py)  
     *Provides schema discovery (sheet names, columns, and data types) and executes python pandas code to evaluate math on single or multi-sheet workbooks.*
-*   **PDF Visual Page Renderer:** [open_webui_tools/pdf_page_renderer.py](file:///home/hirthikbalaji/AGPT_FE/Brain/open_webui_tools/pdf_page_renderer.py)  
+*   **PDF Visual Page Renderer:** [GitHub Source](https://github.com/AmritaGPT/open-webui-local-rag/blob/main/open_webui_tools/pdf_page_renderer.py) | [Local File](file:///home/hirthikbalaji/AGPT_FE/Brain/open_webui_tools/pdf_page_renderer.py)  
     *Renders pages of scanned visual PDFs into base64 PNGs for ingestion by local visual LLMs (e.g. Llama-3.2-Vision).*
 
 ### B. Guides & Verification Suite
-*   **Architectural Guide:** [open_webui_document_intelligence_guide.md](file:///home/hirthikbalaji/AGPT_FE/Brain/open_webui_document_intelligence_guide.md)  
+*   **Architectural Guide:** [GitHub Markdown](https://github.com/AmritaGPT/open-webui-local-rag/blob/main/open_webui_document_intelligence_guide.md) | [Local File](file:///home/hirthikbalaji/AGPT_FE/Brain/open_webui_document_intelligence_guide.md)  
     *A complete technical manual detailing architectural design, native Open WebUI capability configurations, and setup instructions.*
-*   **Validation Test Suite:** [test_local_parser.py](file:///home/hirthikbalaji/AGPT_FE/Brain/test_local_parser.py)  
+*   **Validation Test Suite:** [GitHub Script](https://github.com/AmritaGPT/open-webui-local-rag/blob/main/test_local_parser.py) | [Local File](file:///home/hirthikbalaji/AGPT_FE/Brain/test_local_parser.py)  
     *A programmatic Python script that compiles a test directory structure and creates standard multi-format files to verify tool output correctness.*
-*   **Sample Data Folder:** [sample_data/](file:///home/hirthikbalaji/AGPT_FE/Brain/sample_data/)  
+*   **Sample Data Folder:** [Local Folder](file:///home/hirthikbalaji/AGPT_FE/Brain/sample_data/)  
     *Contains generated test files including `sales.xlsx`, `multisheet.xlsx`, `contract.docx`, `slides.pptx`, and `report.pdf`.*
 
 ---
