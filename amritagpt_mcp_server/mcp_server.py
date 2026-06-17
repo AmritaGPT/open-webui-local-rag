@@ -162,7 +162,26 @@ def read_and_parse_document(filename: str = Query(..., description="The name or 
         
     ext = os.path.splitext(filepath)[1].lower()
     try:
-        if ext == '.pdf':
+        if ext in ['.txt', '.md', '.json', '.yaml', '.yml']:
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            return {"content": content}
+        elif ext == '.csv':
+            df = pd.read_csv(filepath)
+            try:
+                markdown_table = df.head(100).to_markdown(index=False)
+            except Exception:
+                # Fallback manual table parser if tabulate library is not present
+                cols = list(df.columns)
+                lines = [
+                    "| " + " | ".join([str(c) for c in cols]) + " |",
+                    "| " + " | ".join(["---"] * len(cols)) + " |"
+                ]
+                for _, row in df.head(100).iterrows():
+                    lines.append("| " + " | ".join([str(val).replace("\n", " ") for val in row]) + " |")
+                markdown_table = "\n".join(lines)
+            return {"content": f"### CSV File Content (Top 100 Rows):\n\n{markdown_table}"}
+        elif ext == '.pdf':
             output = []
             with pdfplumber.open(filepath) as pdf:
                 for i, page in enumerate(pdf.pages):
