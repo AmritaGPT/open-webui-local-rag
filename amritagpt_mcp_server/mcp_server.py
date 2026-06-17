@@ -1,9 +1,9 @@
 """
-AmritaGPT Document Intelligence MCP Server
+AmritaGPT Document Intelligence OpenAPI Server
 Author: Advanced Agentic RAG Team
 Version: 1.0.0
-Description: A Model Context Protocol (MCP) server providing layout-aware document search, 
-             retrieval, OCR, and spreadsheet computations locally and offline.
+Description: A FastAPI server exposing layout-aware document search, retrieval, OCR, 
+             and spreadsheet computations locally as a standard OpenAPI service.
 """
 
 import os
@@ -14,9 +14,9 @@ import io
 import re
 from typing import List, Dict, Any
 from pydantic import BaseModel, Field
-
-# MCP SDK Import
-from mcp.server.fastmcp import FastMCP
+from fastapi import FastAPI, Query, HTTPException, Body
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 
 # Data Processing Dependencies
 import pandas as pd
@@ -27,61 +27,79 @@ from pptx import Presentation
 from PIL import Image
 import pytesseract
 
-# Initialize MCP Server
-mcp = FastMCP("AmritaGPT-Doc-Intelligence")
+# Initialize FastAPI App
+app = FastAPI(
+    title="AmritaGPT Document Intelligence API",
+    description="Local layout-aware document search, parsing, and spreadsheet calculations.",
+    version="1.0.0"
+)
 
-# Default SharePoint Synced Directory
+# Enable CORS for Open WebUI connectivity
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Default Synced Directory
 DEFAULT_PATH = "/media/hirthikbalaji/AGPT DATA/SAMPLE"
 
 def _resolve_safe_path(filename: str) -> str:
     """Sanitizes filename and resolves path, preventing directory traversal."""
     sanitized_filename = os.path.basename(filename)
-    # Support relative nested paths like "Contracts/NDA.pdf" safely
     if "/" in filename or "\\" in filename:
         clean_parts = [os.path.basename(p) for p in re.split(r'[/\\]', filename) if p and p != '..']
         sanitized_filename = os.path.join(*clean_parts)
         
     full_path = os.path.normpath(os.path.join(DEFAULT_PATH, sanitized_filename))
     if not full_path.startswith(os.path.normpath(DEFAULT_PATH)):
-        raise ValueError("Directory traversal attempt blocked.")
+        raise HTTPException(status_code=400, detail="Directory traversal attempt blocked.")
     return full_path
 
-@mcp.tool()
-def list_all_documents() -> str:
+class SpreadsheetQueryRequest(BaseModel):
+    filename: str = Field(..., description="The name of the spreadsheet file.")
+    code: str = Field(..., description="The Python/Pandas code to execute. Store outcome in 'result' variable.")
+
+@app.get("/")
+def read_root():
+    return {"message": "AmritaGPT Document Intelligence API is online and fully local."}
+
+@app.get("/documents")
+def list_all_documents():
     """
-    Lists all documents available in the local repository recursively, showing their relative paths and sizes.
+    Lists all documents available in the local repository recursively.
     """
     if not os.path.exists(DEFAULT_PATH):
-        return f"Error: Synced repository directory '{DEFAULT_PATH}' does not exist."
+        raise HTTPException(status_code=500, detail=f"Synced directory '{DEFAULT_PATH}' does not exist.")
         
     search_pattern = os.path.join(DEFAULT_PATH, "**", "*")
     files = glob.glob(search_pattern, recursive=True)
     
-    output = ["### Synced Document Repository Listings:\n"]
-    file_count = 0
+    results = []
     for filepath in files:
         if os.path.isfile(filepath):
-            file_count += 1
             rel_path = os.path.relpath(filepath, DEFAULT_PATH)
             size_kb = os.path.getsize(filepath) / 1024
             mod_time = time.ctime(os.path.getmtime(filepath))
-            output.append(f"- **File:** `{rel_path}`\n  - Size: {size_kb:.1f} KB | Last Modified: {mod_time}")
+            results.append({
+                "filename": os.path.basename(filepath),
+                "path": rel_path,
+                "size_kb": round(size_kb, 2),
+                "last_modified": mod_time
+            })
             
-    if file_count == 0:
-        return "The repository is currently empty."
-    return "\n".join(output)
+    return {"documents": results}
 
-@mcp.tool()
-def search_documents(query: str, search_contents: bool = True) -> str:
+@app.get("/search")
+def search_documents(query: str = Query(..., description="Keywords to search for"), search_contents: bool = True):
     """
     Searches the repository for documents matching keywords.
-    Can perform filename search and recursive offline full-text content search.
-    
-    :param query: Keywords to search for (e.g. 'Chennai campus', 'sales matrix').
-    :param search_contents: If True, scans text content of PDFs and text files offline for the query term.
+    Scans filenames and performs offline full-text content search.
     """
     if not os.path.exists(DEFAULT_PATH):
-        return "Error: Synced repository directory does not exist."
+        raise HTTPException(status_code=500, detail="Repository path does not exist.")
         
     search_pattern = os.path.join(DEFAULT_PATH, "**", "*")
     all_items = glob.glob(search_pattern, recursive=True)
@@ -92,12 +110,16 @@ def search_documents(query: str, search_contents: bool = True) -> str:
         if os.path.isfile(filepath):
             filename = os.path.basename(filepath)
             if query.lower() in filename.lower():
-                matches.append((filepath, "Filename match"))
+                matches.append({
+                    "path": os.path.relpath(filepath, DEFAULT_PATH),
+                    "reason": "Filename match",
+                    "size_kb": round(os.path.getsize(filepath)/1024, 2)
+                })
                 
     # 2. Content search fallback (PDF, DOCX, TXT)
     if search_contents:
         for filepath in all_items:
-            if os.path.isfile(filepath) and filepath not in [m[0] for m in matches]:
+            if os.path.isfile(filepath) and filepath not in [os.path.join(DEFAULT_PATH, m["path"]) for m in matches]:
                 ext = os.path.splitext(filepath)[1].lower()
                 try:
                     text_content = ""
@@ -106,43 +128,37 @@ def search_documents(query: str, search_contents: bool = True) -> str:
                             text_content = f.read()
                     elif ext == '.pdf':
                         with pdfplumber.open(filepath) as pdf:
-                            # Search first 5 pages quickly
                             text_content = " ".join([page.extract_text() or "" for page in pdf.pages[:5]])
                     elif ext == '.docx':
                         doc = docx.Document(filepath)
                         text_content = " ".join([p.text for p in doc.paragraphs[:20]])
                         
                     if query.lower() in text_content.lower():
-                        # Extract snippet
                         match_obj = re.search(rf"([^.?!]*?{re.escape(query)}[^.?!]*?[.?!])", text_content, re.IGNORECASE)
-                        snippet = match_obj.group(1).strip() if match_obj else f"Matches found in content."
-                        matches.append((filepath, f"Content snippet: \"... {snippet} ...\""))
+                        snippet = match_obj.group(1).strip() if match_obj else "Matches found in content."
+                        matches.append({
+                            "path": os.path.relpath(filepath, DEFAULT_PATH),
+                            "reason": f"Content snippet: \"... {snippet} ...\"",
+                            "size_kb": round(os.path.getsize(filepath)/1024, 2)
+                        })
                 except Exception:
-                    continue # Skip parsing errors during search
+                    continue
                     
-    if not matches:
-        return f"No documents or text matches for '{query}' found in repository."
-        
-    results = [f"### Search Results for '{query}':\n"]
-    for idx, (path, match_reason) in enumerate(matches[:10]):
-        rel_path = os.path.relpath(path, DEFAULT_PATH)
-        results.append(f"{idx+1}. **File:** `{rel_path}`\n   - **Match Reason:** {match_reason}\n   - **Size:** {os.path.getsize(path)/1024:.1f} KB")
-        
-    return "\n".join(results)
+    return {"results": matches[:10]}
 
-@mcp.tool()
-def read_and_parse_document(filename: str) -> str:
+@app.get("/parse")
+def read_and_parse_document(filename: str = Query(..., description="The name or relative path of the file to parse")):
     """
-    Parses a PDF, Word document (.docx), PowerPoint slide (.pptx), or Scanned Image locally.
+    Parses a PDF, DOCX, PPTX, or Scanned Image locally.
     Maintains table structures, headings, and outlines sequentially in Markdown format.
     """
     try:
         filepath = _resolve_safe_path(filename)
-    except Exception as e:
-        return str(e)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
         
     if not os.path.exists(filepath):
-        return f"Error: File '{filename}' not found."
+        raise HTTPException(status_code=404, detail="File not found.")
         
     ext = os.path.splitext(filepath)[1].lower()
     try:
@@ -166,7 +182,7 @@ def read_and_parse_document(filename: str) -> str:
                     text = page.extract_text()
                     if text:
                         output.append("### Text Content:\n" + text + "\n\n")
-            return "\n".join(output)
+            return {"content": "\n".join(output)}
             
         elif ext == '.docx':
             doc = docx.Document(filepath)
@@ -186,7 +202,7 @@ def read_and_parse_document(filename: str) -> str:
                             separator = "| " + " | ".join(["---"] * len(row_cells)) + " |"
                             markdown_table.append(separator)
                     output.append("\n".join(markdown_table) + "\n\n")
-            return "\n".join(output)
+            return {"content": "\n".join(output)}
             
         elif ext == '.pptx':
             prs = Presentation(filepath)
@@ -205,65 +221,64 @@ def read_and_parse_document(filename: str) -> str:
                                 separator = "| " + " | ".join(["---"] * len(row_cells)) + " |"
                                 markdown_table.append(separator)
                         output.append("\n".join(markdown_table) + "\n\n")
-            return "\n".join(output)
+            return {"content": "\n".join(output)}
             
         elif ext in ['.png', '.jpg', '.jpeg', '.tiff', '.bmp']:
             img = Image.open(filepath)
             text = pytesseract.image_to_string(img)
-            return f"### OCR Text Output:\n{text}"
+            return {"content": f"### OCR Text Output:\n{text}"}
         else:
-            return f"Unsupported file type '{ext}' for local parsing."
+            raise HTTPException(status_code=400, detail=f"Unsupported extension: {ext}")
     except Exception as e:
-        return f"Error parsing file: {str(e)}"
+        raise HTTPException(status_code=500, detail=f"Error parsing file: {str(e)}")
 
-@mcp.tool()
-def get_spreadsheet_schema(filename: str) -> str:
+@app.get("/spreadsheet/schema")
+def get_spreadsheet_schema(filename: str = Query(..., description="Excel/CSV filename")):
     """
     Examines an Excel or CSV file structure, listing the sheet names, columns, and column data types.
-    Always call this first before performing spreadsheet calculations.
     """
     try:
         filepath = _resolve_safe_path(filename)
-    except Exception as e:
-        return str(e)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
         
     if not os.path.exists(filepath):
-        return "Spreadsheet file not found."
+        raise HTTPException(status_code=404, detail="File not found.")
         
     try:
         if filepath.endswith('.csv'):
             df = pd.read_csv(filepath, nrows=5)
             cols = ", ".join([f"`{col}` ({df[col].dtype})" for col in df.columns])
-            return f"**CSV File columns:**\n- {cols}"
+            return {"type": "csv", "columns": cols}
         elif filepath.endswith(('.xlsx', '.xls')):
             xl = pd.ExcelFile(filepath)
             sheets = xl.sheet_names
-            result = [f"**Excel File contains {len(sheets)} sheet(s):**"]
+            result = []
             for sheet in sheets:
                 df = pd.read_excel(filepath, sheet_name=sheet, nrows=5)
                 cols = ", ".join([f"`{col}` ({df[col].dtype})" for col in df.columns])
-                result.append(f"- **Sheet Name:** `{sheet}`\n  - **Columns:** {cols}")
-            return "\n".join(result)
+                result.append({
+                    "sheet_name": sheet,
+                    "columns": cols
+                })
+            return {"type": "excel", "sheets": result}
         else:
-            return "Unsupported file type."
+            raise HTTPException(status_code=400, detail="Unsupported spreadsheet type.")
     except Exception as e:
-        return f"Error reading schema: {str(e)}"
+        raise HTTPException(status_code=500, detail=f"Error reading schema: {str(e)}")
 
-@mcp.tool()
-def query_spreadsheet(filename: str, code: str) -> str:
+@app.post("/spreadsheet/query")
+def query_spreadsheet(payload: SpreadsheetQueryRequest):
     """
     Runs Python Pandas code on a local spreadsheet to execute calculations, filters, or category groups.
-    - If spreadsheet has 1 sheet, DataFrame is pre-loaded as 'df'.
-    - If spreadsheet has multi-sheets, loaded as dictionary of DataFrames 'sheets' (e.g. sheets['Sheet1']).
-    - Assign the final computed value to 'result'.
     """
     try:
-        filepath = _resolve_safe_path(filename)
-    except Exception as e:
-        return str(e)
+        filepath = _resolve_safe_path(payload.filename)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
         
     if not os.path.exists(filepath):
-        return "Spreadsheet file not found."
+        raise HTTPException(status_code=404, detail="File not found.")
         
     try:
         if filepath.endswith('.csv'):
@@ -273,9 +288,9 @@ def query_spreadsheet(filename: str, code: str) -> str:
             sheets = pd.read_excel(filepath, sheet_name=None)
             df = list(sheets.values())[0] if len(sheets) == 1 else None
         else:
-            return "Unsupported file format."
+            raise HTTPException(status_code=400, detail="Unsupported file format.")
     except Exception as e:
-        return f"Error loading file: {str(e)}"
+        raise HTTPException(status_code=500, detail=f"Error loading file: {str(e)}")
         
     local_vars = {
         'sheets': sheets,
@@ -285,28 +300,26 @@ def query_spreadsheet(filename: str, code: str) -> str:
     }
     
     try:
-        # Executes code blocks locally
-        exec(code, {}, local_vars)
+        exec(payload.code, {}, local_vars)
         result = local_vars.get('result')
         if result is None:
-            return "Code ran successfully, but 'result' variable was not assigned."
-        return str(result)
+            raise HTTPException(status_code=400, detail="Code ran successfully, but 'result' variable was not assigned.")
+        return {"result": str(result)}
     except Exception as e:
-        return f"Error executing calculation: {str(e)}"
+        raise HTTPException(status_code=500, detail=f"Error executing calculation: {str(e)}")
 
-@mcp.tool()
-def render_pdf_page_as_image(filename: str, page_num: int = 1) -> str:
+@app.get("/pdf/render")
+def render_pdf_page_as_image(filename: str = Query(..., description="PDF filename"), page_num: int = 1):
     """
     Converts a single PDF page into a base64 PNG data URL.
-    Use this when you need to inspect visual charts, logos, diagrams, layouts, or forms.
     """
     try:
         filepath = _resolve_safe_path(filename)
-    except Exception as e:
-        return str(e)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
         
     if not os.path.exists(filepath):
-        return "PDF file not found."
+        raise HTTPException(status_code=404, detail="File not found.")
         
     try:
         doc = fitz.open(filepath)
@@ -325,9 +338,12 @@ def render_pdf_page_as_image(filename: str, page_num: int = 1) -> str:
         img.save(buffered, format="PNG")
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
         
-        return f"--- Page {idx + 1} Visual Representation ---\ndata:image/png;base64,{img_str}"
+        return {
+            "page_num": idx + 1,
+            "image_data_url": f"data:image/png;base64,{img_str}"
+        }
     except Exception as e:
-        return f"Error rendering page: {str(e)}"
+        raise HTTPException(status_code=500, detail=f"Error rendering page: {str(e)}")
 
 if __name__ == "__main__":
-    mcp.run()
+    uvicorn.run(app, host="0.0.0.0", port=8000)
