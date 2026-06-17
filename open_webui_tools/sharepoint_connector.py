@@ -42,6 +42,11 @@ class Tools:
     def __init__(self):
         self.valves = self.Valves()
 
+    def _get_local_path(self) -> str:
+        if not self.valves.SHAREPOINT_LOCAL_PATH:
+            return ""
+        return self.valves.SHAREPOINT_LOCAL_PATH.strip().strip('"').strip("'")
+
     def _is_authorized(self, __user__: dict = None) -> bool:
         if not self.valves.AUTHORIZED_EMAILS:
             return True
@@ -65,27 +70,29 @@ class Tools:
         if not self._is_authorized(__user__):
             return "Error: You are not authorized to use the SharePoint document search tool."
 
+        local_path = self._get_local_path()
+
         # Scenario A: Local Synced Folder (Primary offline method)
-        if self.valves.SHAREPOINT_LOCAL_PATH:
-            if not os.path.exists(self.valves.SHAREPOINT_LOCAL_PATH):
-                return f"Error: Local SharePoint folder path '{self.valves.SHAREPOINT_LOCAL_PATH}' does not exist."
+        if local_path:
+            if not os.path.exists(local_path):
+                return f"Error: Local SharePoint folder path '{local_path}' does not exist."
             
             # Search recursively using globbing
-            search_pattern = os.path.join(self.valves.SHAREPOINT_LOCAL_PATH, "**", f"*{query}*")
+            search_pattern = os.path.join(local_path, "**", f"*{query}*")
             matches = glob.glob(search_pattern, recursive=True)
             
             if not matches:
                 # If no direct match, try searching files containing query in their names
-                search_pattern = os.path.join(self.valves.SHAREPOINT_LOCAL_PATH, "**", "*")
+                search_pattern = os.path.join(local_path, "**", "*")
                 all_files = glob.glob(search_pattern, recursive=True)
                 matches = [f for f in all_files if os.path.isfile(f) and query.lower() in os.path.basename(f).lower()]
                 
             if not matches:
-                return f"No documents matching '{query}' were found in local path '{self.valves.SHAREPOINT_LOCAL_PATH}'."
+                return f"No documents matching '{query}' were found in local path '{local_path}'."
                 
             results = ["### Synced SharePoint Files Found:\n"]
             for filepath in matches[:10]: # Limit to top 10 matches
-                rel_path = os.path.relpath(filepath, self.valves.SHAREPOINT_LOCAL_PATH)
+                rel_path = os.path.relpath(filepath, local_path)
                 size_kb = os.path.getsize(filepath) / 1024
                 results.append(f"- **Filename:** `{os.path.basename(filepath)}`\n  - **Path:** `{rel_path}`\n  - **Size:** {size_kb:.1f} KB")
             return "\n".join(results)
@@ -131,16 +138,18 @@ class Tools:
         if not self._is_authorized(__user__):
             return "Error: You are not authorized to read documents from the SharePoint repository."
             
+        local_path = self._get_local_path()
+
         # Scenario A: Local Synced Folder
-        if self.valves.SHAREPOINT_LOCAL_PATH:
-            full_path = os.path.join(self.valves.SHAREPOINT_LOCAL_PATH, identifier)
+        if local_path:
+            full_path = os.path.join(local_path, identifier)
             # If not found directly, check if identifier is just a filename
             if not os.path.exists(full_path):
-                matches = glob.glob(os.path.join(self.valves.SHAREPOINT_LOCAL_PATH, "**", identifier), recursive=True)
+                matches = glob.glob(os.path.join(local_path, "**", identifier), recursive=True)
                 if matches:
                     full_path = matches[0]
                 else:
-                    return f"Error: Local file '{identifier}' not found under '{self.valves.SHAREPOINT_LOCAL_PATH}'."
+                    return f"Error: Local file '{identifier}' not found under '{local_path}'."
             
             # Parse locally
             return self._parse_local_document(full_path)
