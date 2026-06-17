@@ -1,8 +1,8 @@
 """
 title: Local SharePoint Connector & Parser
 author: Advanced Agentic RAG Team
-version: 1.0.0
-description: Integrates with SharePoint (either via a local OneDrive/SharePoint synced directory or directly via Microsoft Graph Cloud API) to search, download, and parse files locally and offline.
+version: 1.1.0
+description: Integrates with SharePoint to search and parse files locally. Invoke ONLY when the user explicitly references documents, files, reports, data, or searches. Do NOT use for casual greetings (hi, hello, etc.) or general questions.
 requirements: msal, requests, pdfplumber, python-docx, python-pptx, pytesseract, Pillow
 """
 
@@ -61,8 +61,7 @@ class Tools:
 
     def search_documents(self, query: str, __user__: dict = None) -> str:
         """
-        Searches the SharePoint repository (synced folder or cloud) for documents matching the query keywords.
-        Returns a list of matching filenames, paths, and document sizes.
+        Searches the SharePoint repository for documents matching the query keywords. Use ONLY when the user explicitly asks to find, locate, search, list, or examine files. Do NOT invoke for greetings or chit-chat.
         
         :param query: The search term or keywords (e.g., 'NDA template', 'Q3 financial report').
         :return: A list of matching files formatted as markdown.

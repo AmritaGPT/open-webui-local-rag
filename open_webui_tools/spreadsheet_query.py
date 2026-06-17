@@ -1,31 +1,37 @@
 """
 title: Excel & CSV Spreadsheet Analyzer
 author: Advanced Agentic RAG Team
-version: 1.0.0
-description: Executes Python/Pandas commands on CSV or Excel (.xlsx) files to get precise answers, filtering, and summaries. Avoids vector-database inaccuracies for structured spreadsheets.
+version: 1.1.0
+description: Executes Python/Pandas analytical queries on CSV or Excel files. Invoke ONLY when the user explicitly asks you to compute, aggregate, filter, or summarize spreadsheet data. Do NOT use for greetings or general questions.
 requirements: pandas, openpyxl
 """
 
 import os
 import glob
 from typing import Dict, List, Any
+from pydantic import BaseModel, Field
 import pandas as pd
 
 class Tools:
+    class Valves(BaseModel):
+        SHAREPOINT_LOCAL_PATH: str = Field(
+            default="/media/hirthikbalaji/AGPT DATA/SAMPLE",
+            description="Absolute path to your synced SharePoint or OneDrive folder containing local spreadsheets."
+        )
+
     def __init__(self):
-        pass
+        self.valves = self.Valves()
 
     def get_spreadsheet_schema(self, filename: str) -> str:
         """
-        Retrieves the schema of a CSV or Excel file (sheet names, column headers, and data types).
-        Use this first to inspect the data structure before writing python pandas code.
+        Retrieves the sheet names and columns of a spreadsheet. Call this first to understand sheet/column structures before running queries.
         
-        :param filename: The name of the CSV or Excel file to inspect.
+        :param filename: The name of the Excel or CSV file (e.g. 'sales.xlsx').
         :return: A markdown summary of the spreadsheet schema.
         """
         filepath = self._resolve_path(filename)
         if not filepath:
-            return f"Error: File '{filename}' not found."
+            return f"Error: File '{filename}' not found in the SharePoint directory."
             
         try:
             if filepath.endswith('.csv'):
@@ -48,25 +54,23 @@ class Tools:
 
     def run_pandas_code(self, filename: str, code: str) -> str:
         """
-        Executes a Python code block using pandas on the specified spreadsheet file.
-        - If Excel has ONE sheet, it is pre-loaded into DataFrame 'df'.
-        - If Excel has MULTIPLE sheets, they are loaded into a dict of DataFrames named 'sheets' (e.g. `df = sheets['Q2_Sales']`).
-        - The result must be stored in the 'result' variable.
+        Executes python pandas code to calculate totals, filter rows, or summarize columns on a spreadsheet.
+        - Exposes 'df' if there is one sheet, or a dictionary 'sheets' of DataFrames if there are multiple sheets.
+        - Your code must assign the final calculation or table result to the 'result' variable.
         
-        :param filename: The name or path of the CSV or Excel file.
-        :param code: The Python code to execute. Store your final result in the variable 'result' (e.g., `result = df.sum()`).
+        :param filename: The name of the Excel or CSV file.
+        :param code: The Python code to run. Assign the output to 'result' (e.g. `result = df['Sales'].sum()`).
         :return: The string representation of the 'result' variable.
         """
         filepath = self._resolve_path(filename)
         if not filepath:
-            return f"Error: File '{filename}' not found."
+            return f"Error: File '{filename}' not found in the SharePoint directory."
             
         try:
             if filepath.endswith('.csv'):
                 df = pd.read_csv(filepath)
                 sheets = {"default": df}
             elif filepath.endswith(('.xlsx', '.xls')):
-                # Load all sheets as dict of DataFrames
                 sheets = pd.read_excel(filepath, sheet_name=None)
                 if len(sheets) == 1:
                     df = list(sheets.values())[0]
@@ -77,7 +81,6 @@ class Tools:
         except Exception as e:
             return f"Error loading file: {str(e)}"
             
-        # Prepare context for execution
         local_vars = {
             'sheets': sheets,
             'df': df,
@@ -86,32 +89,30 @@ class Tools:
         }
         
         try:
-            # Note: Execute safely. Standard Python sandbox recommendations apply.
             exec(code, {}, local_vars)
             result = local_vars.get('result')
             if result is None:
-                return "Code executed successfully, but 'result' variable was not set. Please assign your final output to the 'result' variable."
+                return "Code executed successfully, but 'result' variable was not set."
             return str(result)
         except Exception as e:
             return f"Error executing code: {str(e)}"
 
     def _resolve_path(self, filename: str) -> str:
-        search_paths = [
-            "/media/hirthikbalaji/AGPT DATA/SAMPLE",
-            "/app/backend/data/uploads",
-            "/mnt/uploads",
-            "./backend/data/uploads",
-            ".",
-        ]
-        for path in search_paths:
-            full_path = os.path.join(path, filename)
-            if os.path.exists(full_path):
-                return full_path
-                
-        # Glob matching fallback
-        for path in search_paths:
-            matches = glob.glob(os.path.join(path, f"*{filename}*"))
-            if matches:
-                return matches[0]
+        local_path = self.valves.SHAREPOINT_LOCAL_PATH.strip().strip('"').strip("'")
+        if not local_path or not os.path.exists(local_path):
+            return None
+            
+        full_path = os.path.join(local_path, filename)
+        if os.path.exists(full_path):
+            return full_path
+            
+        # Recursive glob search inside SharePoint folder
+        matches = glob.glob(os.path.join(local_path, "**", filename), recursive=True)
+        if matches:
+            return matches[0]
+            
+        matches_glob = glob.glob(os.path.join(local_path, "**", f"*{filename}*"), recursive=True)
+        if matches_glob:
+            return matches_glob[0]
+            
         return None
-
