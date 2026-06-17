@@ -15,7 +15,7 @@ import requests
 class Tools:
     class Valves(BaseModel):
         SHAREPOINT_LOCAL_PATH: str = Field(
-            default="",
+            default="/media/hirthikbalaji/AGPT DATA/SAMPLE",
             description="Absolute path to your synced SharePoint or OneDrive folder on this computer. If set, searches will run locally (Recommended for offline setup)."
         )
         TENANT_ID: str = Field(
