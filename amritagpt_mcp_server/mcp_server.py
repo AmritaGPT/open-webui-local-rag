@@ -66,6 +66,19 @@ class SpreadsheetQueryRequest(BaseModel):
 def read_root():
     return {"message": "AmritaGPT Document Intelligence API is online and fully local."}
 
+@app.get("/health")
+def health_check():
+    """Health check for local RAG document intelligence server."""
+    dir_exists = os.path.exists(DEFAULT_PATH)
+    return {
+        "status": "healthy" if dir_exists else "degraded",
+        "service": "AmritaGPT Document Intelligence API",
+        "version": "1.1.0",
+        "default_path": DEFAULT_PATH,
+        "directory_accessible": dir_exists
+    }
+
+
 @app.get("/documents")
 def list_all_documents():
     """
